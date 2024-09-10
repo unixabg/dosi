@@ -10,7 +10,6 @@ const port = 3000;
 const logFilePath = path.join(__dirname, 'server.log');
 
 // Function to log messages to the file
-// Function to log messages to the file
 function logToFile(req, message) {
     let ip = 'N/A';
     if (req) {
@@ -18,6 +17,26 @@ function logToFile(req, message) {
     }
     const logMessage = `[${new Date().toISOString()}] [IP: ${ip}] ${message}\n`;
     fs.appendFileSync(logFilePath, logMessage, 'utf8');
+}
+
+// Function to include the header and footer in response
+function includeHeaderAndFooter(callback) {
+    const headerPath = path.join(__dirname, 'header.html');
+    const footerPath = path.join(__dirname, 'footer.html');
+
+    fs.readFile(headerPath, 'utf8', (err, headerData) => {
+        if (err) {
+            console.error('Error reading header.html:', err);
+            headerData = ''; // Fallback in case of error
+        }
+        fs.readFile(footerPath, 'utf8', (err, footerData) => {
+            if (err) {
+                console.error('Error reading footer.html:', err);
+                footerData = ''; // Fallback in case of error
+            }
+            callback(headerData, footerData);
+        });
+    });
 }
 
 // Load credentials from credentials.json
@@ -73,15 +92,26 @@ app.use(express.json());
 
 // Serve the index page, protected by authentication
 app.get('/', checkAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    includeHeaderAndFooter((header, footer) => {
+        res.send(`
+            ${header}
+            <h1>Welcome to the Device Operating System Injection (DOSI) Management Dashboard</h1>
+            <p>Use the links below to manage devices:</p>
+            <ul>
+                <li><a href="/pending-adoption">View Pending Adoptions</a></li>
+                <li><a href="/view-adopted">View Adopted Clients</a></li>
+            </ul>
+            ${footer}
+        `);
+    });
     logToFile(req, 'Accessed index page.');
 });
 
 // Login route
 app.get('/login', (req, res) => {
-    res.send(`
-        <html>
-        <body>
+    includeHeaderAndFooter((header, footer) => {
+        res.send(`
+            ${header}
             <h1>Login</h1>
             <form action="/login" method="post">
                 <label for="username">Username:</label><br>
@@ -90,9 +120,9 @@ app.get('/login', (req, res) => {
                 <input type="password" id="password" name="password"><br><br>
                 <input type="submit" value="Login">
             </form>
-        </body>
-        </html>
-    `);
+            ${footer}
+        `);
+    });
 });
 
 app.post('/login', (req, res) => {
@@ -113,7 +143,14 @@ app.post('/login', (req, res) => {
 app.get('/logout', (req, res) => {
     logToFile(req, 'User logged out.');
     req.session.destroy();
-    res.send('Logged out successfully! <a href="/login">Login Again</a>');
+    includeHeaderAndFooter((header, footer) => {
+        res.send(`
+            ${header}
+            <h1>Logged out successfully!</h1>
+            <a href="/login">Login Again</a>
+            ${footer}
+        `);
+    });
 });
 
 // Protect all routes except /operator
@@ -153,45 +190,35 @@ app.get('/operator', (req, res) => {
 
 // Serve the pending adoption page
 app.get('/pending-adoption', (req, res) => {
-    // List all unknown clients for adoption
     fs.readdir(unknownClientsDir, (err, files) => {
         if (err) {
             logToFile(req, 'Error reading unknown clients directory.');
             return res.status(500).send('Error reading unknown clients directory.');
         }
-        let clientListHtml = `
-        <html>
-        <head>
-            <style>
-                ul.client-list li:nth-child(odd) {
-                    background-color: #f0f0f0; /* Light gray for odd rows */
-                }
-                ul.client-list li:nth-child(even) {
-                    background-color: #ffffff; /* White for even rows */
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Clients Pending Adoption</h1>
-            <ul class="client-list">`;
-        files.forEach(file => {
-            clientListHtml += `<li>${file} - 
-                               <form action="/adopt" method="post" style="display:inline;">
-                                   <input type="hidden" name="cpuSerial" value="${file}">
-                                   <button type="submit">Adopt</button>
-                               </form>
-                               <form action="/delete-pending" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this pending adoption?');">
-                                   <input type="hidden" name="cpuSerial" value="${file}">
-                                   <button type="submit">Delete</button>
-                               </form>
-                               </li>`;
+        includeHeaderAndFooter((header, footer) => {
+            let clientListHtml = `
+                ${header}
+                <h1>Clients Pending Adoption</h1>
+                <ul class="client-list">`;
+            files.forEach(file => {
+                clientListHtml += `<li>${file} - 
+                                   <form action="/adopt" method="post" style="display:inline;">
+                                       <input type="hidden" name="cpuSerial" value="${file}">
+                                       <input type="text" name="groupName" placeholder="Enter Group Name" required>
+                                       <button type="submit">Adopt</button>
+                                   </form>
+                                   <form action="/delete-pending" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this pending adoption?');">
+                                       <input type="hidden" name="cpuSerial" value="${file}">
+                                       <button type="submit">Delete</button>
+                                   </form>
+                                   </li>`;
+            });
+            clientListHtml += `
+                </ul>
+                <br><a href="/view-adopted">View Adopted Clients</a>
+                ${footer}`;
+            res.send(clientListHtml);
         });
-        clientListHtml += `
-            </ul>
-            <br><a href="/view-adopted">View Adopted Clients</a>
-        </body>
-        </html>`;
-        res.send(clientListHtml);
         logToFile(req, 'Viewed pending adoption clients.');
     });
 });
@@ -199,22 +226,29 @@ app.get('/pending-adoption', (req, res) => {
 // Endpoint to adopt a machine from the web UI
 app.post('/adopt', (req, res) => {
     const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
+    const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 
-    if (!cpuSerial) {
-        logToFile(req, 'CPU serial number not provided for adoption.');
-        return res.status(400).send('CPU serial number not provided.');
+    if (!cpuSerial || !groupName) {
+        logToFile(req, 'CPU serial number or group name not provided for adoption.');
+        return res.status(400).send('CPU serial number or group name not provided.');
     }
 
     const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
-    const adoptedClientDir = path.join(adoptedClientsDir, cpuSerial);
+    const groupDir = path.join(adoptedClientsDir, groupName);
+    const adoptedClientDir = path.join(groupDir, cpuSerial);
+
+    // Ensure the group directory exists
+    if (!fs.existsSync(groupDir)) {
+        fs.mkdirSync(groupDir);
+    }
 
     if (fs.existsSync(unknownClientFile)) {
-        // Create a directory for the adopted client named after its CPU serial number
+        // Create a directory for the adopted client under the specified group
         fs.mkdirSync(adoptedClientDir);
         // Move the serial number file to the adopted clients directory
         fs.renameSync(unknownClientFile, path.join(adoptedClientDir, 'serial_number.txt'));
-        logToFile(req, `Client ${cpuSerial} adopted.`);
-        res.send(`Client ${cpuSerial} has been adopted.<br><a href="/view-adopted">View Adopted Clients</a>`);
+        logToFile(req, `Client ${cpuSerial} adopted to group ${groupName}.`);
+        res.send(`Client ${cpuSerial} has been adopted to group ${groupName}.<br><a href="/view-adopted">View Adopted Clients</a>`);
     } else {
         logToFile(req, `Client ${cpuSerial} not found in pending adoption list.`);
         res.status(404).send('Client not found in unknown clients.');
@@ -244,41 +278,33 @@ app.post('/delete-pending', (req, res) => {
 
 // Serve the page to view adopted clients
 app.get('/view-adopted', (req, res) => {
-    // List all adopted clients
-    fs.readdir(adoptedClientsDir, (err, files) => {
+    fs.readdir(adoptedClientsDir, (err, groups) => {
         if (err) {
             logToFile(req, 'Error reading adopted clients directory.');
             return res.status(500).send('Error reading adopted clients directory.');
         }
-        let clientListHtml = `
-        <html>
-        <head>
-            <style>
-                ul.client-list li:nth-child(odd) {
-                    background-color: #f0f0f0; /* Light gray for odd rows */
+        includeHeaderAndFooter((header, footer) => {
+            let clientListHtml = `${header}<h1>Adopted Clients by Group</h1><ul class="client-list">`;
+            groups.forEach(group => {
+                const groupPath = path.join(adoptedClientsDir, group);
+                if (fs.lstatSync(groupPath).isDirectory()) {
+                    clientListHtml += `<li><strong>Group: ${group}</strong><ul>`;
+                    const clients = fs.readdirSync(groupPath);
+                    clients.forEach(client => {
+                        clientListHtml += `<li>${client} - 
+                                           <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
+                                               <input type="hidden" name="cpuSerial" value="${client}">
+                                               <input type="hidden" name="groupName" value="${group}">
+                                               <button type="submit">Delete</button>
+                                           </form>
+                                           </li>`;
+                    });
+                    clientListHtml += `</ul></li>`;
                 }
-                ul.client-list li:nth-child(even) {
-                    background-color: #ffffff; /* White for even rows */
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Adopted Clients</h1>
-            <ul class="client-list">`;
-        files.forEach(file => {
-            clientListHtml += `<li>${file} - 
-                               <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
-                                   <input type="hidden" name="cpuSerial" value="${file}">
-                                   <button type="submit">Delete</button>
-                               </form>
-                               </li>`;
+            });
+            clientListHtml += `</ul><br><a href="/pending-adoption">Pending Adoption Clients</a>${footer}`;
+            res.send(clientListHtml);
         });
-        clientListHtml += `
-            </ul>
-            <br><a href="/pending-adoption">Pending Adoption Clients</a>
-        </body>
-        </html>`;
-        res.send(clientListHtml);
         logToFile(req, 'Viewed adopted clients.');
     });
 });
@@ -286,20 +312,21 @@ app.get('/view-adopted', (req, res) => {
 // Endpoint to delete an adopted client entry
 app.post('/delete-adopted', (req, res) => {
     const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
+    const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 
-    if (!cpuSerial) {
-        logToFile(req, 'CPU serial number not provided for deletion.');
-        return res.status(400).send('CPU serial number not provided.');
+    if (!cpuSerial || !groupName) {
+        logToFile(req, 'CPU serial number or group name not provided for deletion.');
+        return res.status(400).send('CPU serial number or group name not provided.');
     }
 
-    const adoptedClientDir = path.join(adoptedClientsDir, cpuSerial);
+    const adoptedClientDir = path.join(adoptedClientsDir, groupName, cpuSerial);
 
     if (fs.existsSync(adoptedClientDir)) {
         fs.rmSync(adoptedClientDir, { recursive: true });
-        logToFile(req, `Adopted entry for ${cpuSerial} deleted.`);
-        res.send(`Adopted entry for ${cpuSerial} has been deleted.<br><a href="/view-adopted">Back to Adopted Clients</a>`);
+        logToFile(req, `Adopted entry for ${cpuSerial} in group ${groupName} deleted.`);
+        res.send(`Adopted entry for ${cpuSerial} in group ${groupName} has been deleted.<br><a href="/view-adopted">Back to Adopted Clients</a>`);
     } else {
-        logToFile(req, `Client ${cpuSerial} not found in adopted clients list for deletion.`);
+        logToFile(req, `Client ${cpuSerial} in group ${groupName} not found for deletion.`);
         res.status(404).send('Client not found in adopted clients list.');
     }
 });
