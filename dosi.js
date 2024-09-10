@@ -90,24 +90,7 @@ const checkAuth = (req, res, next) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Serve the index page, protected by authentication
-app.get('/', checkAuth, (req, res) => {
-    includeHeaderAndFooter((header, footer) => {
-        res.send(`
-            ${header}
-            <h1>Welcome to the Device Operating System Injection (DOSI) Management Dashboard</h1>
-            <p>Use the links below to manage devices:</p>
-            <ul>
-                <li><a href="/pending-adoption">View Pending Adoptions</a></li>
-                <li><a href="/view-adopted">View Adopted Clients</a></li>
-            </ul>
-            ${footer}
-        `);
-    });
-    logToFile(req, 'Accessed index page.');
-});
-
-// Login route
+// Serve the login page
 app.get('/login', (req, res) => {
     includeHeaderAndFooter((header, footer) => {
         res.send(`
@@ -115,9 +98,9 @@ app.get('/login', (req, res) => {
             <h1>Login</h1>
             <form action="/login" method="post">
                 <label for="username">Username:</label><br>
-                <input type="text" id="username" name="username"><br><br>
+                <input type="text" id="username" name="username" required><br><br>
                 <label for="password">Password:</label><br>
-                <input type="password" id="password" name="password"><br><br>
+                <input type="password" id="password" name="password" required><br><br>
                 <input type="submit" value="Login">
             </form>
             ${footer}
@@ -125,6 +108,7 @@ app.get('/login', (req, res) => {
     });
 });
 
+// Handle login requests
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -135,11 +119,11 @@ app.post('/login', (req, res) => {
         res.redirect('/'); // Redirect to the home page after login
     } else {
         logToFile(req, `Failed login attempt with username: ${username}`);
-        res.status(401).send('Invalid credentials.');
+        res.status(401).send('Invalid credentials. <br><a href="/login">Try again</a>');
     }
 });
 
-// Logout route
+// Handle logout requests
 app.get('/logout', (req, res) => {
     logToFile(req, 'User logged out.');
     req.session.destroy();
@@ -153,12 +137,104 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// Protect all routes except /operator
-app.use((req, res, next) => {
-    if (req.path === '/operator') {
-        next(); // Allow access to /operator without authentication
+// Serve the index page, protected by authentication
+app.get('/', checkAuth, (req, res) => {
+    includeHeaderAndFooter((header, footer) => {
+        res.send(`
+            ${header}
+            <h1>Welcome to the Device Operating System Injection (DOSI) Management Dashboard</h1>
+            <p>Use the links below to manage devices:</p>
+            <ul>
+                <li><a href="/pending-adoption">View Pending Adoptions</a></li>
+                <li><a href="/view-adopted">View Adopted Clients</a></li>
+                <li><a href="/groups">Manage Groups</a></li>
+            </ul>
+            ${footer}
+        `);
+    });
+    logToFile(req, 'Accessed index page.');
+});
+
+// Serve the groups management page
+app.get('/groups', checkAuth, (req, res) => {
+    fs.readdir(adoptedClientsDir, (err, groups) => {
+        if (err) {
+            logToFile(req, 'Error reading groups directory.');
+            return res.status(500).send('Error reading groups directory.');
+        }
+        includeHeaderAndFooter((header, footer) => {
+            let groupListHtml = `${header}<h1>Manage Groups</h1><ul class="group-list">`;
+            groups.forEach(group => {
+                const groupPath = path.join(adoptedClientsDir, group);
+                if (fs.lstatSync(groupPath).isDirectory()) {
+                    const clients = fs.readdirSync(groupPath);
+                    const clientCount = clients.length;
+                    groupListHtml += `<li>${group} - ${clientCount} clients 
+                                      <form action="/delete-group" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this group?');">
+                                          <input type="hidden" name="groupName" value="${group}">
+                                          <button type="submit" ${clientCount > 0 ? 'disabled' : ''}>Delete</button>
+                                      </form>
+                                      </li>`;
+                }
+            });
+            groupListHtml += `</ul>
+                <h2>Add a New Group</h2>
+                <form action="/add-group" method="post">
+                    <input type="text" name="groupName" placeholder="Enter Group Name" required>
+                    <button type="submit">Add Group</button>
+                </form>
+                ${footer}`;
+            res.send(groupListHtml);
+        });
+        logToFile(req, 'Viewed groups management page.');
+    });
+});
+
+// Endpoint to add a new group
+app.post('/add-group', checkAuth, (req, res) => {
+    const groupName = req.body.groupName ? req.body.groupName.trim() : null;
+
+    if (!groupName) {
+        logToFile(req, 'Group name not provided for addition.');
+        return res.status(400).send('Group name not provided.');
+    }
+
+    const groupDir = path.join(adoptedClientsDir, groupName);
+
+    if (!fs.existsSync(groupDir)) {
+        fs.mkdirSync(groupDir);
+        logToFile(req, `Group ${groupName} added.`);
+        res.send(`Group ${groupName} has been added.<br><a href="/groups">Back to Manage Groups</a>`);
     } else {
-        checkAuth(req, res, next); // Require authentication for all other routes
+        logToFile(req, `Group ${groupName} already exists.`);
+        res.status(400).send('Group already exists.');
+    }
+});
+
+// Endpoint to delete a group
+app.post('/delete-group', checkAuth, (req, res) => {
+    const groupName = req.body.groupName ? req.body.groupName.trim() : null;
+
+    if (!groupName) {
+        logToFile(req, 'Group name not provided for deletion.');
+        return res.status(400).send('Group name not provided.');
+    }
+
+    const groupDir = path.join(adoptedClientsDir, groupName);
+
+    if (fs.existsSync(groupDir)) {
+        const clients = fs.readdirSync(groupDir);
+        if (clients.length === 0) {
+            fs.rmdirSync(groupDir);
+            logToFile(req, `Group ${groupName} deleted.`);
+            res.send(`Group ${groupName} has been deleted.<br><a href="/groups">Back to Manage Groups</a>`);
+        } else {
+            logToFile(req, `Attempt to delete non-empty group ${groupName}.`);
+            res.status(400).send('Group is not empty and cannot be deleted.');
+        }
+    } else {
+        logToFile(req, `Group ${groupName} not found for deletion.`);
+        res.status(404).send('Group not found.');
     }
 });
 
@@ -178,7 +254,7 @@ app.get('/operator', (req, res) => {
         logToFile(req, `Operator says, known machine: ${cpuSerial}`);
         res.send('Machine is already known and adopted.');
     } else if (fs.existsSync(unknownClientFile)) {
-        logToFile(req, `Operator says, pending machine: ${cpuSerial}`);
+        logToFile(req, `Operator says, pending machine check: ${cpuSerial}`);
         res.send('Machine is pending adoption.');
     } else {
         // Create a file in unknown_clients to mark it as a new, unadopted machine
@@ -189,42 +265,63 @@ app.get('/operator', (req, res) => {
 });
 
 // Serve the pending adoption page
-app.get('/pending-adoption', (req, res) => {
+app.get('/pending-adoption', checkAuth, (req, res) => {
     fs.readdir(unknownClientsDir, (err, files) => {
         if (err) {
             logToFile(req, 'Error reading unknown clients directory.');
             return res.status(500).send('Error reading unknown clients directory.');
         }
-        includeHeaderAndFooter((header, footer) => {
-            let clientListHtml = `
-                ${header}
-                <h1>Clients Pending Adoption</h1>
-                <ul class="client-list">`;
-            files.forEach(file => {
-                clientListHtml += `<li>${file} - 
-                                   <form action="/adopt" method="post" style="display:inline;">
-                                       <input type="hidden" name="cpuSerial" value="${file}">
-                                       <input type="text" name="groupName" placeholder="Enter Group Name" required>
-                                       <button type="submit">Adopt</button>
-                                   </form>
-                                   <form action="/delete-pending" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this pending adoption?');">
-                                       <input type="hidden" name="cpuSerial" value="${file}">
-                                       <button type="submit">Delete</button>
-                                   </form>
-                                   </li>`;
+
+        // Read existing groups
+        fs.readdir(adoptedClientsDir, (err, groups) => {
+            if (err) {
+                logToFile(req, 'Error reading groups directory.');
+                return res.status(500).send('Error reading groups directory.');
+            }
+
+            // Generate the dropdown options for groups
+            let groupOptions = groups
+                .filter(group => fs.lstatSync(path.join(adoptedClientsDir, group)).isDirectory())
+                .map(group => `<option value="${group}">${group}</option>`)
+                .join('');
+
+            includeHeaderAndFooter((header, footer) => {
+                let clientListHtml = `
+                    ${header}
+                    <h1>Clients Pending Adoption</h1>
+                    <ul class="client-list">`;
+
+                files.forEach(file => {
+                    clientListHtml += `<li>${file} - 
+                                       <form action="/adopt" method="post" style="display:inline;">
+                                           <input type="hidden" name="cpuSerial" value="${file}">
+                                           <select name="groupName" required>
+                                               <option value="" disabled selected>Select Group</option>
+                                               ${groupOptions}
+                                           </select>
+                                           <button type="submit">Adopt</button>
+                                       </form>
+                                       <form action="/delete-pending" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this pending adoption?');">
+                                           <input type="hidden" name="cpuSerial" value="${file}">
+                                           <button type="submit">Delete</button>
+                                       </form>
+                                       </li>`;
+                });
+
+                clientListHtml += `
+                    </ul>
+                    <br><a href="/view-adopted">View Adopted Clients</a>
+                    ${footer}`;
+                res.send(clientListHtml);
             });
-            clientListHtml += `
-                </ul>
-                <br><a href="/view-adopted">View Adopted Clients</a>
-                ${footer}`;
-            res.send(clientListHtml);
+
+            logToFile(req, 'Viewed pending adoption clients with group selection.');
         });
-        logToFile(req, 'Viewed pending adoption clients.');
     });
 });
 
 // Endpoint to adopt a machine from the web UI
-app.post('/adopt', (req, res) => {
+app.post('/adopt', checkAuth, (req, res) => {
     const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
     const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 
@@ -256,7 +353,7 @@ app.post('/adopt', (req, res) => {
 });
 
 // Endpoint to delete a pending adoption entry
-app.post('/delete-pending', (req, res) => {
+app.post('/delete-pending', checkAuth, (req, res) => {
     const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
 
     if (!cpuSerial) {
@@ -277,7 +374,7 @@ app.post('/delete-pending', (req, res) => {
 });
 
 // Serve the page to view adopted clients
-app.get('/view-adopted', (req, res) => {
+app.get('/view-adopted', checkAuth, (req, res) => {
     fs.readdir(adoptedClientsDir, (err, groups) => {
         if (err) {
             logToFile(req, 'Error reading adopted clients directory.');
@@ -310,7 +407,7 @@ app.get('/view-adopted', (req, res) => {
 });
 
 // Endpoint to delete an adopted client entry
-app.post('/delete-adopted', (req, res) => {
+app.post('/delete-adopted', checkAuth, (req, res) => {
     const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
     const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 

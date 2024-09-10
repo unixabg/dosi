@@ -22,53 +22,31 @@
         .header h1 {
             margin: 0;
             font-size: 18px;
+            flex: 1;
         }
-        .dropdown {
-            position: relative;
-            display: inline-block;
+        .nav-links {
+            display: flex;
+            gap: 10px;
         }
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            right: 0;
-            background-color: #f9f9f9;
-            min-width: 200px; /* Wider width for hamburger style */
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1;
-        }
-        .dropdown-content a {
-            color: black;
-            padding: 12px 16px;
+        .nav-links a {
+            color: white;
             text-decoration: none;
-            display: block;
+            font-weight: bold;
         }
-        .dropdown-content a:hover {
-            background-color: #f1f1f1;
-        }
-        .dropdown:hover .dropdown-content {
-            display: block;
-        }
-        .dropdown:hover .hamburger-menu {
-            color: #ddd;
-        }
-        .hamburger-menu {
-            font-size: 24px;
-            cursor: pointer;
+        .nav-links a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Device Management Dashboard</h1>
-        <div class="dropdown">
-            <span class="hamburger-menu">&#x2630;</span> <!-- Unicode for hamburger menu (three horizontal lines) -->
-            <div class="dropdown-content">
-                <a href="/">Home</a>
-                <a href="/pending-adoption">Pending Adoptions</a>
-                <a href="/view-adopted">Adopted Clients</a>
-                <a href="/groups">Manage Groups</a>
-                <a href="/logout">Logout</a>
-            </div>
+        <div class="nav-links">
+            <a href="/">Home</a> |
+            <a href="/pending-adoption">Pending Adoptions</a> |
+            <a href="/view-adopted">Adopted Clients</a> |
+            <a href="/groups">Manage Groups</a> |
+            <a href="/logout">Logout</a>
         </div>
     </div>
 
