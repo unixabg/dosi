@@ -116,17 +116,17 @@ app.get('/logout', (req, res) => {
     res.send('Logged out successfully! <a href="/login">Login Again</a>');
 });
 
-// Protect all routes except /check
+// Protect all routes except /operator
 app.use((req, res, next) => {
-    if (req.path === '/check') {
-        next(); // Allow access to /check without authentication
+    if (req.path === '/operator') {
+        next(); // Allow access to /operator without authentication
     } else {
         checkAuth(req, res, next); // Require authentication for all other routes
     }
 });
 
 // Handle incoming requests for client identification
-app.get('/check', (req, res) => {
+app.get('/operator', (req, res) => {
     const cpuSerial = req.query.cpuSerial ? req.query.cpuSerial.toUpperCase() : null;
 
     if (!cpuSerial) {
@@ -138,15 +138,15 @@ app.get('/check', (req, res) => {
     const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
 
     if (fs.existsSync(adoptedClientDir)) {
-        logToFile(req, `Known machine check: ${cpuSerial}`);
+        logToFile(req, `Operator says, known machine: ${cpuSerial}`);
         res.send('Machine is already known and adopted.');
     } else if (fs.existsSync(unknownClientFile)) {
-        logToFile(req, `Pending machine check: ${cpuSerial}`);
+        logToFile(req, `Operator says, pending machine: ${cpuSerial}`);
         res.send('Machine is pending adoption.');
     } else {
         // Create a file in unknown_clients to mark it as a new, unadopted machine
         fs.writeFileSync(unknownClientFile, 'New client detected');
-        logToFile(req, `New client detected: ${cpuSerial}. File created.`);
+        logToFile(req, `Operator says, new client detected: ${cpuSerial}. File created.`);
         res.send('New device detected. Please follow the instructions to register.');
     }
 });
