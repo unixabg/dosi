@@ -166,6 +166,8 @@ app.get('/', checkAuth, (req, res) => {
                         <th style="padding: 8px; text-align: left;">Status</th>
                         <th style="padding: 8px; text-align: left;">Last Seen</th>
                         <th style="padding: 8px; text-align: left;">Group</th>
+                        <th style="padding: 8px; text-align: left;">Alias</th>
+                        <th style="padding: 8px; text-align: left;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -173,9 +175,12 @@ app.get('/', checkAuth, (req, res) => {
         // Add each client row with alternating row colors
         clients.forEach((client, index) => {
             const rowColor = index % 2 === 0 ? '#f2f2f2' : '#ffffff'; // Alternate row colors
+            const clientDir = path.join(adoptedClientsDir, client.group, client.client);
+            const aliasFile = path.join(clientDir, 'alias.txt');
+            let alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : '';
 
             // Check the 'phonehome' file status
-            const phonehomeFile = path.join(adoptedClientsDir, client.group, client.client, 'phonehome');
+            const phonehomeFile = path.join(clientDir, 'phonehome');
             let statusDot = '<span style="color: lightgrey; font-size: 2em;">●</span>'; // Default to lightgrey dot
             let lastSeen = 'Never'; // Default if no phone home
 
@@ -192,24 +197,82 @@ app.get('/', checkAuth, (req, res) => {
                 lastSeen = lastModifiedTime.toLocaleString(); // Convert to readable format
             }
 
+            // HTML for each client row
             clientTableHtml += `
                 <tr style="background-color: ${rowColor};">
                     <td style="padding: 8px;">${client.client}</td>
                     <td style="padding: 8px; text-align: center;">${statusDot}</td>
                     <td style="padding: 8px;">${lastSeen}</td>
                     <td style="padding: 8px;">${client.group}</td>
+                    <td style="padding: 8px;" id="alias-${client.client}">
+                        <span id="alias-text-${client.client}">${alias || 'No Alias'}</span>
+                        <input type="text" id="alias-input-${client.client}" value="${alias}" style="display:none; width: 120px;">
+                    </td>
+                    <td style="padding: 8px;">
+                        <button onclick="editAlias('${client.client}')" style="border: none; background: none; cursor: pointer;">
+                            <span style="font-size: 16px; color: #007bff;">✏️</span>
+                        </button>
+                        <button id="save-${client.client}" onclick="saveAlias('${client.client}', '${client.group}')" style="display:none;">Save</button>
+                        <button id="cancel-${client.client}" onclick="cancelEdit('${client.client}')" style="display:none;">Cancel</button>
+                    </td>
                 </tr>`;
         });
 
         clientTableHtml += `
                 </tbody>
             </table>
+            <script>
+                function editAlias(clientId) {
+                    document.getElementById('alias-text-' + clientId).style.display = 'none';
+                    document.getElementById('alias-input-' + clientId).style.display = 'inline';
+                    document.getElementById('save-' + clientId).style.display = 'inline';
+                    document.getElementById('cancel-' + clientId).style.display = 'inline';
+                }
+
+                function cancelEdit(clientId) {
+                    document.getElementById('alias-text-' + clientId).style.display = 'inline';
+                    document.getElementById('alias-input-' + clientId).style.display = 'none';
+                    document.getElementById('save-' + clientId).style.display = 'none';
+                    document.getElementById('cancel-' + clientId).style.display = 'none';
+                }
+
+                function saveAlias(clientId, groupName) {
+                    const newAlias = document.getElementById('alias-input-' + clientId).value;
+                    fetch('/edit-alias', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({ deviceId: clientId, groupName: groupName, alias: newAlias })
+                    }).then(() => {
+                        document.getElementById('alias-text-' + clientId).textContent = newAlias || 'No Alias';
+                        cancelEdit(clientId);
+                    }).catch(err => console.error(err));
+                }
+            </script>
             ${footer}
         `;
         res.send(clientTableHtml);
     });
 
     logToFile(req, 'Accessed index page.');
+});
+
+// Endpoint to edit the alias of a device
+app.post('/edit-alias', checkAuth, (req, res) => {
+    const { groupName, deviceId, alias } = req.body;
+
+    if (!groupName || !deviceId) {
+        logToFile(req, 'Group name or device ID not provided for alias editing.');
+        return res.status(400).send('Group name or device ID not provided.');
+    }
+
+    const clientDir = path.join(adoptedClientsDir, groupName, deviceId);
+    const aliasFile = path.join(clientDir, 'alias.txt');
+
+    // Save the alias to the alias.txt file
+    fs.writeFileSync(aliasFile, alias, 'utf-8');
+    logToFile(req, `Alias for device ${deviceId} in group ${groupName} updated to: ${alias}`);
+
+    res.redirect('/'); // Redirect back to the main page after saving the alias
 });
 
 // Serve the groups management page
@@ -468,7 +531,10 @@ app.get('/view-adopted', checkAuth, (req, res) => {
                     clientListHtml += `<li><strong>Group: ${group}</strong><ul>`;
                     const clients = fs.readdirSync(groupPath);
                     clients.forEach(client => {
-                        clientListHtml += `<li>${client} - 
+                        const aliasFile = path.join(groupPath, client, 'alias.txt');
+                        let alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : '';
+
+                        clientListHtml += `<li>${client} ${alias ? '(' + alias + ')' : 'No Alias'} -
                                            <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
                                                <input type="hidden" name="cpuSerial" value="${client}">
                                                <input type="hidden" name="groupName" value="${group}">
@@ -479,7 +545,7 @@ app.get('/view-adopted', checkAuth, (req, res) => {
                     clientListHtml += `</ul></li>`;
                 }
             });
-            clientListHtml += `</ul><br><a href="/pending-adoption">Pending Adoption Clients</a>${footer}`;
+            clientListHtml += `</ul><br><a href="/">Back to Home</a>${footer}`;
             res.send(clientListHtml);
         });
         logToFile(req, 'Viewed adopted clients.');
