@@ -451,10 +451,7 @@ app.get('/pending-adoption', checkAuth, (req, res) => {
                                        </li>`;
                 });
 
-                clientListHtml += `
-                    </ul>
-                    <br><a href="/view-adopted">View Adopted Clients</a>
-                    ${footer}`;
+                clientListHtml += `</ul>${footer}`;
                 res.send(clientListHtml);
             });
 
@@ -545,7 +542,7 @@ app.get('/view-adopted', checkAuth, (req, res) => {
                     clientListHtml += `</ul></li>`;
                 }
             });
-            clientListHtml += `</ul><br><a href="/">Back to Home</a>${footer}`;
+            clientListHtml += `</ul>${footer}`;
             res.send(clientListHtml);
         });
         logToFile(req, 'Viewed adopted clients.');
