@@ -291,26 +291,96 @@ app.get('/groups', checkAuth, (req, res) => {
             return res.status(500).send('Error reading groups directory.');
         }
         includeHeaderAndFooter((header, footer) => {
-            let groupListHtml = `${header}<h1>Manage Groups</h1><ul class="group-list">`;
+            // Start building the HTML with a container for the card layout
+            let groupListHtml = `
+                ${header}
+                <h1>Manage Groups</h1>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">`;
+
             groups.forEach(group => {
                 const groupPath = path.join(adoptedClientsDir, group);
                 if (fs.lstatSync(groupPath).isDirectory()) {
                     const clients = fs.readdirSync(groupPath);
                     const clientCount = clients.length;
-                    groupListHtml += `<li>${group} - ${clientCount} clients 
-                                      <form action="/delete-group" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this group?');">
-                                          <input type="hidden" name="groupName" value="${group}">
-                                          <button type="submit" ${clientCount > 0 ? 'disabled' : ''}>Delete</button>
-                                      </form>
-                                      </li>`;
+
+                    // Check if 'library.script' exists and read its content
+                    const libraryScriptPath = path.join(groupPath, 'library.script');
+                    let libraryScriptContent = fs.existsSync(libraryScriptPath) ? fs.readFileSync(libraryScriptPath, 'utf-8') : 'No Script Available';
+
+                    // Determine button state
+                    const isDisabled = clientCount > 0 ? 'disabled' : '';
+                    const buttonStyle = clientCount > 0 ? 'background-color: #ddd; color: #888; cursor: not-allowed;' : 'background-color: #ff4d4d; color: white; cursor: pointer;';
+
+                    // Add a card for each group
+                    groupListHtml += `
+                        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; width: 300px; background-color: #f9f9f9; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);">
+                            <h2 style="margin-top: 0;">${group}</h2>
+                            <p><strong>Client Count:</strong> ${clientCount}</p>
+                            <div style="margin-bottom: 10px;">
+                                <strong>Library Script:</strong>
+                                <div id="script-view-${group}" style="white-space: pre-wrap; font-family: monospace; background-color: #f8f8f8; border: 1px solid #ccc; padding: 8px; margin-top: 5px; max-height: 100px; overflow-y: auto;">
+                                    <pre>${libraryScriptContent}</pre>
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <button onclick="editScript('${group}', \`${libraryScriptContent.replace(/`/g, '\\`')}\`)" style="border: none; background: none; cursor: pointer;">
+                                    <span style="font-size: 16px; color: #007bff;">✏️ Edit</span>
+                                </button>
+                                <form action="/delete-group" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this group?');">
+                                    <input type="hidden" name="groupName" value="${group}">
+                                    <button type="submit" ${isDisabled} style="${buttonStyle} border: none; border-radius: 4px; padding: 5px 10px;">Delete</button>
+                                </form>
+                            </div>
+                        </div>`;
                 }
             });
-            groupListHtml += `</ul>
-                <h2>Add a New Group</h2>
-                <form action="/add-group" method="post">
-                    <input type="text" name="groupName" placeholder="Enter Group Name" required>
-                    <button type="submit">Add Group</button>
+
+            groupListHtml += `
+                </div>
+                <h2 style="margin-top: 20px;">Add a New Group</h2>
+                <form action="/add-group" method="post" style="margin-top: 10px;">
+                    <input type="text" name="groupName" placeholder="Enter Group Name" required style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <button type="submit" style="background-color: #28a745; color: white; border: none; border-radius: 4px; padding: 8px 12px; cursor: pointer;">Add Group</button>
                 </form>
+
+                <!-- Modal for Editing Library Script -->
+                <div id="editModal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center;">
+                    <div style="background-color: white; border-radius: 8px; padding: 20px; width: 90%; position: relative;">
+                        <h3>Edit Library Script</h3>
+                        <textarea id="modalScriptContent" style="width: 100%; height: 300px; font-family: monospace;"></textarea>
+                        <div style="margin-top: 10px; text-align: right;">
+                            <button onclick="saveScript()" style="margin-right: 5px;">Save</button>
+                            <button onclick="closeModal()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    let currentGroup = '';
+
+                    function editScript(group, scriptContent) {
+                        currentGroup = group;
+                        document.getElementById('modalScriptContent').value = scriptContent;
+                        document.getElementById('editModal').style.display = 'flex';
+                    }
+
+                    function closeModal() {
+                        document.getElementById('editModal').style.display = 'none';
+                    }
+
+                    function saveScript() {
+                        const scriptContent = document.getElementById('modalScriptContent').value;
+                        fetch('/edit-script', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams({ groupName: currentGroup, libraryScript: scriptContent })
+                        }).then(() => {
+                            closeModal(); // Close the modal after saving
+                            alert('Script saved successfully.');
+                            location.reload(); // Reload the page to show updated content
+                        }).catch(err => console.error(err));
+                    }
+                </script>
                 ${footer}`;
             res.send(groupListHtml);
         });
@@ -366,6 +436,25 @@ app.post('/delete-group', checkAuth, (req, res) => {
     }
 });
 
+// Endpoint to edit the library script of a group
+app.post('/edit-script', checkAuth, (req, res) => {
+    const { groupName, libraryScript } = req.body;
+
+    if (!groupName) {
+        logToFile(req, 'Group name not provided for script editing.');
+        return res.status(400).send('Group name not provided.');
+    }
+
+    const groupDir = path.join(adoptedClientsDir, groupName);
+    const libraryScriptPath = path.join(groupDir, 'library.script');
+
+    // Save the script to 'library.script' file
+    fs.writeFileSync(libraryScriptPath, libraryScript, 'utf-8');
+    logToFile(req, `Library script for group ${groupName} updated.`);
+
+    res.redirect('/groups'); // Redirect back to the Manage Groups page
+});
+
 // Handle incoming requests for client identification
 app.get('/operator', (req, res) => {
     const cpuSerial = req.query.cpuSerial ? req.query.cpuSerial.toUpperCase() : null;
@@ -394,8 +483,16 @@ app.get('/operator', (req, res) => {
             const phonehomeFile = path.join(adoptedClientDir, 'phonehome');
             fs.writeFileSync(phonehomeFile, 'Client checked in');
 
+            // Check for the 'library.script' in the group directory
+            const libraryScriptPath = path.join(adoptedClientsDir, group, 'library.script');
+            let libraryScriptContent = '';
+
+            if (fs.existsSync(libraryScriptPath)) {
+                libraryScriptContent = fs.readFileSync(libraryScriptPath, 'utf-8');
+            }
+
             logToFile(req, `Operator says, known machine: ${cpuSerial} in group ${group}. 'phonehome' file updated.`);
-            res.send('Machine is already known and adopted.');
+            res.send(libraryScriptContent); // Return the library script content
             return; // Exit the function once the client is found
         }
     }
