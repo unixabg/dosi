@@ -139,19 +139,76 @@ app.get('/logout', (req, res) => {
 
 // Serve the index page, protected by authentication
 app.get('/', checkAuth, (req, res) => {
+    const clients = [];
+    const groupDirectories = fs.readdirSync(adoptedClientsDir).filter(group =>
+        fs.lstatSync(path.join(adoptedClientsDir, group)).isDirectory()
+    );
+
+    // Gather all clients from each group
+    groupDirectories.forEach(group => {
+        const groupPath = path.join(adoptedClientsDir, group);
+        const groupClients = fs.readdirSync(groupPath).filter(client =>
+            fs.lstatSync(path.join(groupPath, client)).isDirectory()
+        ).map(client => ({ group, client }));
+
+        clients.push(...groupClients);
+    });
+
     includeHeaderAndFooter((header, footer) => {
-        res.send(`
+        // Build the client table HTML with alternating row colors
+        let clientTableHtml = `
             ${header}
             <h1>Welcome to the Device Operating System Injection (DOSI) Management Dashboard</h1>
-            <p>Use the links below to manage devices:</p>
-            <ul>
-                <li><a href="/pending-adoption">View Pending Adoptions</a></li>
-                <li><a href="/view-adopted">View Adopted Clients</a></li>
-                <li><a href="/groups">Manage Groups</a></li>
-            </ul>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background-color: #333; color: white;">
+                        <th style="padding: 8px; text-align: left;">Device ID</th>
+                        <th style="padding: 8px; text-align: left;">Status</th>
+                        <th style="padding: 8px; text-align: left;">Last Seen</th>
+                        <th style="padding: 8px; text-align: left;">Group</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        // Add each client row with alternating row colors
+        clients.forEach((client, index) => {
+            const rowColor = index % 2 === 0 ? '#f2f2f2' : '#ffffff'; // Alternate row colors
+
+            // Check the 'phonehome' file status
+            const phonehomeFile = path.join(adoptedClientsDir, client.group, client.client, 'phonehome');
+            let statusDot = '<span style="color: lightgrey; font-size: 2em;">●</span>'; // Default to lightgrey dot
+            let lastSeen = 'Never'; // Default if no phone home
+
+            if (fs.existsSync(phonehomeFile)) {
+                const lastModifiedTime = fs.statSync(phonehomeFile).mtime;
+                const timeDifference = (new Date() - lastModifiedTime) / (1000 * 60); // Difference in minutes
+
+                // Determine dot color based on time difference
+                if (timeDifference <= 5) {
+                    statusDot = '<span style="color: green; font-size: 2em;">●</span>'; // Green dot for recent phone home
+                }
+
+                // Format the last seen time as a readable string
+                lastSeen = lastModifiedTime.toLocaleString(); // Convert to readable format
+            }
+
+            clientTableHtml += `
+                <tr style="background-color: ${rowColor};">
+                    <td style="padding: 8px;">${client.client}</td>
+                    <td style="padding: 8px; text-align: center;">${statusDot}</td>
+                    <td style="padding: 8px;">${lastSeen}</td>
+                    <td style="padding: 8px;">${client.group}</td>
+                </tr>`;
+        });
+
+        clientTableHtml += `
+                </tbody>
+            </table>
             ${footer}
-        `);
+        `;
+        res.send(clientTableHtml);
     });
+
     logToFile(req, 'Accessed index page.');
 });
 
@@ -274,7 +331,10 @@ app.get('/operator', (req, res) => {
 
     // If the client was not found in any group directory, check if it's pending adoption
     if (fs.existsSync(unknownClientFile)) {
-        logToFile(req, `Operator says, pending machine check: ${cpuSerial}`);
+        // Touch or update the file in pending adoption to mark the last contact time
+        fs.writeFileSync(unknownClientFile, 'Client checked in');
+
+        logToFile(req, `Operator says, pending machine check: ${cpuSerial}. 'unknownClientFile' updated.`);
         res.send('Machine is pending adoption.');
     } else {
         // Create a file in unknown_clients to mark it as a new, unadopted machine
