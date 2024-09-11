@@ -632,28 +632,37 @@ app.get('/view-adopted', checkAuth, (req, res) => {
             return res.status(500).send('Error reading adopted clients directory.');
         }
         includeHeaderAndFooter((header, footer) => {
-            let clientListHtml = `${header}<h1>Adopted Clients by Group</h1><ul class="client-list">`;
+            let clientListHtml = `${header}
+                <h1>Adopted Clients by Group</h1>
+                <ul class="client-list">`;
+
             groups.forEach(group => {
                 const groupPath = path.join(adoptedClientsDir, group);
                 if (fs.lstatSync(groupPath).isDirectory()) {
                     clientListHtml += `<li><strong>Group: ${group}</strong><ul>`;
+
+                    // List all clients within the group directory
                     const clients = fs.readdirSync(groupPath);
                     clients.forEach(client => {
-                        const aliasFile = path.join(groupPath, client, 'alias.txt');
-                        let alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : '';
-
-                        clientListHtml += `<li>${client} ${alias ? '(' + alias + ')' : 'No Alias'} -
-                                           <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
-                                               <input type="hidden" name="cpuSerial" value="${client}">
-                                               <input type="hidden" name="groupName" value="${group}">
-                                               <button type="submit">Delete</button>
-                                           </form>
-                                           </li>`;
+                        const clientPath = path.join(groupPath, client);
+                        if (fs.lstatSync(clientPath).isDirectory()) {
+                            clientListHtml += `<li>${client} -
+                                <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
+                                    <input type="hidden" name="cpuSerial" value="${client}">
+                                    <input type="hidden" name="groupName" value="${group}">
+                                    <button type="submit">Delete</button>
+                                </form>
+                                </li>`;
+                        }
                     });
+
                     clientListHtml += `</ul></li>`;
                 }
             });
-            clientListHtml += `</ul>${footer}`;
+
+            clientListHtml += `</ul>
+                <br><a href="/">Back to Home</a>
+                ${footer}`;
             res.send(clientListHtml);
         });
         logToFile(req, 'Viewed adopted clients.');
