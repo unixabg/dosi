@@ -590,7 +590,13 @@ app.post('/adopt', checkAuth, (req, res) => {
         // Move the serial number file to the adopted clients directory
         fs.renameSync(unknownClientFile, path.join(adoptedClientDir, 'serial_number.txt'));
         logToFile(req, `Client ${cpuSerial} adopted to group ${groupName}.`);
-        res.send(`Client ${cpuSerial} has been adopted to group ${groupName}.<br><a href="/view-adopted">View Adopted Clients</a>`);
+        res.send(`Client ${cpuSerial} has been adopted to group ${groupName}.
+                <br><p>You will be redirected to the pending adoption page page in 3 seconds...</p>
+                <script>
+                    setTimeout(function() {
+                        window.location.href = '/pending-adoption';
+                    }, 3000);
+                </script>`);
     } else {
         logToFile(req, `Client ${cpuSerial} not found in pending adoption list.`);
         res.status(404).send('Client not found in unknown clients.');
@@ -669,7 +675,13 @@ app.post('/delete-adopted', checkAuth, (req, res) => {
     if (fs.existsSync(adoptedClientDir)) {
         fs.rmSync(adoptedClientDir, { recursive: true });
         logToFile(req, `Adopted entry for ${cpuSerial} in group ${groupName} deleted.`);
-        res.send(`Adopted entry for ${cpuSerial} in group ${groupName} has been deleted.<br><a href="/view-adopted">Back to Adopted Clients</a>`);
+        res.send(`Adopted entry for ${cpuSerial} in group ${groupName} has been deleted.
+                <br><p>You will be redirected to the adopted clients page page in 3 seconds...</p>
+                <script>
+                    setTimeout(function() {
+                        window.location.href = '/view-adopted';
+                    }, 3000);
+                </script>`);
     } else {
         logToFile(req, `Client ${cpuSerial} in group ${groupName} not found for deletion.`);
         res.status(404).send('Client not found in adopted clients list.');
