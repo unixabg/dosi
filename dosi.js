@@ -2,9 +2,17 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
-
+const https = require('https');
 const app = express();
-const port = 3000;
+const port = 8443;
+
+const serverOptions = {
+    cert: fs.readFileSync(path.join(__dirname, 'cert.pem')), // Read cert from ./ directory
+    key: fs.readFileSync(path.join(__dirname, 'key.pem')) // Read key from ./ directory
+};
+
+// Create an HTTPS server for serving HTML files
+const httpsServer = https.createServer(serverOptions, app);
 
 // Log file path
 const logFilePath = path.join(__dirname, 'server.log');
@@ -571,8 +579,8 @@ app.post('/delete-adopted', checkAuth, (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    logToFile(null, `Device management server running on http://localhost:${port}`);
-    console.log(`Device management server running on http://localhost:${port}`);
+// Start the HTTPS server
+httpsServer.listen(port, () => {
+    logToFile(null, `Device management server running securely on https://localhost:${port}`);
+    console.log(`Device management server running securely on https://localhost:${port}`);
 });
-
