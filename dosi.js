@@ -402,7 +402,13 @@ app.post('/add-group', checkAuth, (req, res) => {
     if (!fs.existsSync(groupDir)) {
         fs.mkdirSync(groupDir);
         logToFile(req, `Group ${groupName} added.`);
-        res.send(`Group ${groupName} has been added.<br><a href="/groups">Back to Manage Groups</a>`);
+        res.send(`Group ${groupName} has been added.
+                <br><p>You will be redirected to the manage groups page in 3 seconds...</p>
+                <script>
+                    setTimeout(function() {
+                        window.location.href = '/groups';
+                    }, 3000);
+                </script>`);
     } else {
         logToFile(req, `Group ${groupName} already exists.`);
         res.status(400).send('Group already exists.');
@@ -425,7 +431,13 @@ app.post('/delete-group', checkAuth, (req, res) => {
         if (clients.length === 0) {
             fs.rmdirSync(groupDir);
             logToFile(req, `Group ${groupName} deleted.`);
-            res.send(`Group ${groupName} has been deleted.<br><a href="/groups">Back to Manage Groups</a>`);
+            res.send(`Group ${groupName} has been deleted.
+                <br><p>You will be redirected to the manage groups page in 3 seconds...</p>
+                <script>
+                    setTimeout(function() {
+                        window.location.href = '/groups';
+                    }, 3000);
+                </script>`);
         } else {
             logToFile(req, `Attempt to delete non-empty group ${groupName}.`);
             res.status(400).send('Group is not empty and cannot be deleted.');
@@ -591,7 +603,7 @@ app.post('/adopt', checkAuth, (req, res) => {
         fs.renameSync(unknownClientFile, path.join(adoptedClientDir, 'serial_number.txt'));
         logToFile(req, `Client ${cpuSerial} adopted to group ${groupName}.`);
         res.send(`Client ${cpuSerial} has been adopted to group ${groupName}.
-                <br><p>You will be redirected to the pending adoption page page in 3 seconds...</p>
+                <br><p>You will be redirected to the pending adoption page in 3 seconds...</p>
                 <script>
                     setTimeout(function() {
                         window.location.href = '/pending-adoption';
@@ -634,7 +646,12 @@ app.get('/view-adopted', checkAuth, (req, res) => {
         includeHeaderAndFooter((header, footer) => {
             let clientListHtml = `${header}
                 <h1>Adopted Clients by Group</h1>
-                <ul class="client-list">`;
+                <form id="batchForm" method="post" action="/batch-operation">
+                    <div style="margin-bottom: 10px;">
+                        <button type="button" onclick="deleteSelected()" style="background-color: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 4px;">Delete Selected</button>
+                        <button type="button" onclick="moveSelected()" style="background-color: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px;">Move Selected to Another Group</button>
+                    </div>
+                    <ul class="client-list">`;
 
             groups.forEach(group => {
                 const groupPath = path.join(adoptedClientsDir, group);
@@ -646,12 +663,11 @@ app.get('/view-adopted', checkAuth, (req, res) => {
                     clients.forEach(client => {
                         const clientPath = path.join(groupPath, client);
                         if (fs.lstatSync(clientPath).isDirectory()) {
-                            clientListHtml += `<li>${client} -
-                                <form action="/delete-adopted" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this adopted client?');">
-                                    <input type="hidden" name="cpuSerial" value="${client}">
-                                    <input type="hidden" name="groupName" value="${group}">
-                                    <button type="submit">Delete</button>
-                                </form>
+                            const aliasFile = path.join(clientPath, 'alias.txt');
+                            let alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : 'No Alias';
+
+                            clientListHtml += `<li>
+                                <input type="checkbox" name="clients" value="${group}|${client}"> ${client} (${alias})
                                 </li>`;
                         }
                     });
@@ -661,13 +677,67 @@ app.get('/view-adopted', checkAuth, (req, res) => {
             });
 
             clientListHtml += `</ul>
+                <input type="hidden" name="operation" id="operationInput" value="">
                 <br><a href="/">Back to Home</a>
+                </form>
+                <script>
+                    function deleteSelected() {
+                        if (confirm('Are you sure you want to delete the selected clients?')) {
+                            document.getElementById('operationInput').value = 'delete';
+                            document.getElementById('batchForm').submit();
+                        }
+                    }
+
+                    function moveSelected() {
+                        const newGroup = prompt('Enter the new group name:');
+                        if (newGroup) {
+                            document.getElementById('operationInput').value = 'move|' + newGroup;
+                            document.getElementById('batchForm').submit();
+                        }
+                    }
+                </script>
                 ${footer}`;
             res.send(clientListHtml);
         });
         logToFile(req, 'Viewed adopted clients.');
     });
 });
+
+// Handle batch operations for clients
+app.post('/batch-operation', checkAuth, (req, res) => {
+    const { clients, operation } = req.body;
+
+    if (!clients) {
+        logToFile(req, 'No clients selected for batch operation.');
+        return res.redirect('/view-adopted');
+    }
+
+    const clientsArray = Array.isArray(clients) ? clients : [clients];
+    const [action, newGroup] = operation.split('|');
+
+    clientsArray.forEach(clientInfo => {
+        const [groupName, client] = clientInfo.split('|');
+        const clientPath = path.join(adoptedClientsDir, groupName, client);
+
+        if (action === 'delete') {
+            // Delete the client directory
+            fs.rmdirSync(clientPath, { recursive: true });
+            logToFile(req, `Deleted client ${client} from group ${groupName}.`);
+        } else if (action === 'move' && newGroup) {
+            // Move the client to the new group
+            const newGroupPath = path.join(adoptedClientsDir, newGroup);
+            if (!fs.existsSync(newGroupPath)) {
+                fs.mkdirSync(newGroupPath);
+            }
+            const newClientPath = path.join(newGroupPath, client);
+            fs.renameSync(clientPath, newClientPath);
+            logToFile(req, `Moved client ${client} from group ${groupName} to group ${newGroup}.`);
+        }
+    });
+
+    res.redirect('/view-adopted'); // Redirect back to the view page after operation
+});
+
 
 // Endpoint to delete an adopted client entry
 app.post('/delete-adopted', checkAuth, (req, res) => {
@@ -685,7 +755,7 @@ app.post('/delete-adopted', checkAuth, (req, res) => {
         fs.rmSync(adoptedClientDir, { recursive: true });
         logToFile(req, `Adopted entry for ${cpuSerial} in group ${groupName} deleted.`);
         res.send(`Adopted entry for ${cpuSerial} in group ${groupName} has been deleted.
-                <br><p>You will be redirected to the adopted clients page page in 3 seconds...</p>
+                <br><p>You will be redirected to the adopted clients page in 3 seconds...</p>
                 <script>
                     setTimeout(function() {
                         window.location.href = '/view-adopted';
