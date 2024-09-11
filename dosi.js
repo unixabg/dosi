@@ -100,17 +100,25 @@ app.use(express.json());
 
 // Serve the login page
 app.get('/login', (req, res) => {
+    // Capture any error message from query parameters
+    const error = req.query.error ? req.query.error : '';
+
     includeHeaderAndFooter((header, footer) => {
         res.send(`
             ${header}
-            <h1>Login</h1>
-            <form action="/login" method="post">
-                <label for="username">Username:</label><br>
-                <input type="text" id="username" name="username" required><br><br>
-                <label for="password">Password:</label><br>
-                <input type="password" id="password" name="password" required><br><br>
-                <input type="submit" value="Login">
-            </form>
+            <div class="login-container">
+                <h1>Login</h1>
+                <form action="/login" method="post">
+                    <div class="input-group">
+                        <input type="text" id="username" name="username" placeholder="Username" required>
+                    </div>
+                    <div class="input-group">
+                        <input type="password" id="password" name="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="login-button">Login</button>
+                </form>
+                ${error ? `<div class="error-message">${error}</div>` : ''}
+            </div>
             ${footer}
         `);
     });
