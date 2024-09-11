@@ -247,13 +247,33 @@ app.get('/operator', (req, res) => {
         return res.status(400).send('CPU serial number not provided.');
     }
 
-    const adoptedClientDir = path.join(adoptedClientsDir, cpuSerial);
     const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
+    let isAdopted = false;
 
-    if (fs.existsSync(adoptedClientDir)) {
-        logToFile(req, `Operator says, known machine: ${cpuSerial}`);
-        res.send('Machine is already known and adopted.');
-    } else if (fs.existsSync(unknownClientFile)) {
+    // Search for the client in all group directories under adopted_clients
+    const groupDirectories = fs.readdirSync(adoptedClientsDir).filter(group =>
+        fs.lstatSync(path.join(adoptedClientsDir, group)).isDirectory()
+    );
+
+    for (const group of groupDirectories) {
+        const adoptedClientDir = path.join(adoptedClientsDir, group, cpuSerial);
+
+        if (fs.existsSync(adoptedClientDir)) {
+            // Client is found in one of the group directories
+            isAdopted = true;
+
+            // Create or update the 'phonehome' file to mark the client's check-in time
+            const phonehomeFile = path.join(adoptedClientDir, 'phonehome');
+            fs.writeFileSync(phonehomeFile, 'Client checked in');
+
+            logToFile(req, `Operator says, known machine: ${cpuSerial} in group ${group}. 'phonehome' file updated.`);
+            res.send('Machine is already known and adopted.');
+            return; // Exit the function once the client is found
+        }
+    }
+
+    // If the client was not found in any group directory, check if it's pending adoption
+    if (fs.existsSync(unknownClientFile)) {
         logToFile(req, `Operator says, pending machine check: ${cpuSerial}`);
         res.send('Machine is pending adoption.');
     } else {
