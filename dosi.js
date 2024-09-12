@@ -105,7 +105,7 @@ app.get('/login', (req, res) => {
 
     includeHeaderAndFooter((header, footer) => {
         res.send(`
-            ${header}
+        ${header.replace('<!-- HIDE_NAVIGATION_FLAG -->', 'hide-navigation')}
             <div class="login-container">
                 <h1>Login</h1>
                 <form action="/login" method="post">
@@ -145,11 +145,13 @@ app.get('/logout', (req, res) => {
     req.session.destroy();
     includeHeaderAndFooter((header, footer) => {
         res.send(`
-            ${header}
             <h1>Logged out successfully!</h1>
-            <a href="/login">Login Again</a>
-            ${footer}
-        `);
+            <br><p>You will be redirected to the login page in 3 seconds...</p>
+            <script>
+                setTimeout(function() {
+                    window.location.href = '/login';
+                }, 3000);
+            </script>`);
     });
 });
 

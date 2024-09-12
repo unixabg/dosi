@@ -38,6 +38,10 @@
             flex-grow: 1; /* Allows the header title to take up available space */
         }
 
+        .header.hide-navigation .nav-links {
+            display: none; /* Hides navigation when flag is present */
+        }
+
         .nav-links {
             display: flex;
             gap: 10px;
@@ -115,7 +119,7 @@
     </style>
 </head>
 <body>
-    <div class="header">
+    <div class="header <!-- HIDE_NAVIGATION_FLAG -->">
         <h1>Device Management Dashboard</h1>
         <div class="nav-links">
             <a href="/">Home</a> |
