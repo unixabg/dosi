@@ -478,6 +478,30 @@ app.post('/edit-script', checkAuth, (req, res) => {
     res.redirect('/groups'); // Redirect back to the Manage Groups page
 });
 
+// Serve the logs page
+app.get('/logs', checkAuth, (req, res) => {
+    // Read the contents of the server.log file
+    fs.readFile(logFilePath, 'utf8', (err, logData) => {
+        if (err) {
+            logToFile(req, 'Error reading log file.');
+            return res.status(500).send('Error reading log file.');
+        }
+
+        // Include header and footer with the log data
+        includeHeaderAndFooter((header, footer) => {
+            res.send(`
+                ${header}
+                <h1>Server Logs</h1>
+                <pre style="white-space: pre-wrap; background-color: #f8f8f8; border: 1px solid #ddd; padding: 10px; max-height: 600px; overflow-y: auto;">
+                    ${logData}
+                </pre>
+                ${footer}
+            `);
+        });
+    });
+    logToFile(req, 'Viewed logs.');
+});
+
 // Handle incoming requests for client identification
 app.get('/operator', (req, res) => {
     const cpuSerial = req.query.cpuSerial ? req.query.cpuSerial.toUpperCase() : null;
