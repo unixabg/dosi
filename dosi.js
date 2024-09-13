@@ -176,6 +176,7 @@ app.get('/', checkAuth, (req, res) => {
         // Build the client table HTML with alternating row colors
         let clientTableHtml = `
             ${header}
+            <meta http-equiv="refresh" content="15"> <!-- Auto-refresh every 15 seconds -->
             <h1>Welcome to the Device Operating System Injection (DOSI) Management Dashboard</h1>
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
