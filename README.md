@@ -9,9 +9,9 @@ Follow these steps to install and run the DOSI server on a Debian-based system:
 
 - **Debian-based OS**: This guide assumes you are using a Debian-based Linux distribution (like Ubuntu).
 ## Dependencies
-- ### System Dependencies
--  **Node.js**: Version 12 or higher. Required to run the server.
--  **NPM**: Comes with Node.js, required for managing Node.js packages.
+### System Dependencies
+- **Node.js**: Version 12 or higher. Required to run the server.
+- **NPM**: Comes with Node.js, required for managing Node.js packages.
 - **OpenSSL**: Required for generating self-signed SSL certificates to enable HTTPS.
 ### Node.js Dependencies
 The following Node.js packages are required to run the project:
