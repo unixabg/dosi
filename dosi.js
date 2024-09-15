@@ -233,6 +233,7 @@ app.get('/', checkAuth, (req, res) => {
                         </button>
                         <button id="save-${client.client}" onclick="saveAlias('${client.client}', '${client.group}')" style="display:none;">Save</button>
                         <button id="cancel-${client.client}" onclick="cancelEdit('${client.client}')" style="display:none;">Cancel</button>
+                        <button onclick="confirmAndReboot('${client.client}', '${client.group}')" style="border: none; background: #007bff; color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Reboot</button>
                     </td>
                 </tr>`;
         });
@@ -266,6 +267,17 @@ app.get('/', checkAuth, (req, res) => {
                         cancelEdit(clientId);
                     }).catch(err => console.error(err));
                 }
+                function confirmAndReboot(clientId, groupName) {
+                    if (confirm('Confirm you want to reboot ' + clientId + ' on next operator call?')) {
+                        fetch('/reboot-device', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams({ deviceId: clientId, groupName: groupName })
+                        }).then(response => response.text())
+                          .then(text => alert(text))
+                          .catch(err => console.error(err));
+                    }
+                }
             </script>
             ${footer}
         `;
@@ -273,6 +285,17 @@ app.get('/', checkAuth, (req, res) => {
     });
 
     logToFile(req, 'Accessed index page.');
+});
+
+// Endpoint to handle reboot a device
+app.post('/reboot-device', checkAuth, (req, res) => {
+    const { deviceId, groupName } = req.body;
+    const clientDir = path.join(adoptedClientsDir, groupName, deviceId);
+    const rebootFilePath = path.join(clientDir, 'reboot');
+
+    fs.closeSync(fs.openSync(rebootFilePath, 'w')); // Touch the 'reboot' file
+    logToFile(req, `Reboot requested for device ${deviceId} in group ${groupName}`);
+    res.send(`Reboot sentry set for ${deviceId}.`);
 });
 
 // Endpoint to edit the alias of a device
@@ -529,6 +552,14 @@ app.get('/operator', (req, res) => {
             // Create or update the 'phonehome' file to mark the client's check-in time
             const phonehomeFile = path.join(adoptedClientDir, 'phonehome');
             fs.writeFileSync(phonehomeFile, 'Client checked in');
+
+            // Check for the reboot request in the client's directory
+            const rebootFilePath = path.join(adoptedClientDir, 'reboot');
+            if (fs.existsSync(rebootFilePath)) {
+                fs.unlinkSync(rebootFilePath); // Remove the reboot file
+                res.send('REBOOT'); // Send back the reboot command
+                return;
+            }
 
             // Check for the 'library.script' in the group directory
             const libraryScriptPath = path.join(adoptedClientsDir, group, 'library.script');
