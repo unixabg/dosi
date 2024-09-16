@@ -538,14 +538,14 @@ app.get('/logs', checkAuth, (req, res) => {
 
 // Handle incoming requests for client identification
 app.get('/operator', (req, res) => {
-    const cpuSerial = req.query.cpuSerial ? req.query.cpuSerial.toUpperCase() : null;
+    const deviceSerial = req.query.deviceSerial ? req.query.deviceSerial.toUpperCase() : null;
 
-    if (!cpuSerial) {
+    if (!deviceSerial) {
         logToFile(req, 'CPU serial number not provided.');
         return res.status(400).send('CPU serial number not provided.');
     }
 
-    const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
+    const unknownClientFile = path.join(unknownClientsDir, deviceSerial);
     let isAdopted = false;
 
     // Search for the client in all group directories under adopted_clients
@@ -554,7 +554,7 @@ app.get('/operator', (req, res) => {
     );
 
     for (const group of groupDirectories) {
-        const adoptedClientDir = path.join(adoptedClientsDir, group, cpuSerial);
+        const adoptedClientDir = path.join(adoptedClientsDir, group, deviceSerial);
 
         if (fs.existsSync(adoptedClientDir)) {
             // Client is found in one of the group directories
@@ -580,7 +580,7 @@ app.get('/operator', (req, res) => {
                 libraryScriptContent = fs.readFileSync(libraryScriptPath, 'utf-8');
             }
 
-            logToFile(req, `Operator says, known machine: ${cpuSerial} in group ${group}. 'phonehome' file updated.`);
+            logToFile(req, `Operator says, known machine: ${deviceSerial} in group ${group}. 'phonehome' file updated.`);
             res.send(libraryScriptContent); // Return the library script content
             return; // Exit the function once the client is found
         }
@@ -591,12 +591,12 @@ app.get('/operator', (req, res) => {
         // Touch or update the file in pending adoption to mark the last contact time
         fs.writeFileSync(unknownClientFile, 'Client checked in');
 
-        logToFile(req, `Operator says, pending machine check: ${cpuSerial}. 'unknownClientFile' updated.`);
+        logToFile(req, `Operator says, pending machine check: ${deviceSerial}. 'unknownClientFile' updated.`);
         res.send('Machine is pending adoption.');
     } else {
         // Create a file in unknown_clients to mark it as a new, unadopted machine
         fs.writeFileSync(unknownClientFile, 'New client detected');
-        logToFile(req, `Operator says, new client detected: ${cpuSerial}. File created.`);
+        logToFile(req, `Operator says, new client detected: ${deviceSerial}. File created.`);
         res.send('New device detected. Please follow the instructions to register.');
     }
 });
@@ -631,7 +631,7 @@ app.get('/pending-adoption', checkAuth, (req, res) => {
                 files.forEach(file => {
                     clientListHtml += `<li>${file} - 
                                        <form action="/adopt" method="post" style="display:inline;">
-                                           <input type="hidden" name="cpuSerial" value="${file}">
+                                           <input type="hidden" name="deviceSerial" value="${file}">
                                            <select name="groupName" required>
                                                <option value="" disabled selected>Select Group</option>
                                                ${groupOptions}
@@ -639,7 +639,7 @@ app.get('/pending-adoption', checkAuth, (req, res) => {
                                            <button type="submit">Adopt</button>
                                        </form>
                                        <form action="/delete-pending" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this pending adoption?');">
-                                           <input type="hidden" name="cpuSerial" value="${file}">
+                                           <input type="hidden" name="deviceSerial" value="${file}">
                                            <button type="submit">Delete</button>
                                        </form>
                                        </li>`;
@@ -656,17 +656,17 @@ app.get('/pending-adoption', checkAuth, (req, res) => {
 
 // Endpoint to adopt a machine from the web UI
 app.post('/adopt', checkAuth, (req, res) => {
-    const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
+    const deviceSerial = req.body.deviceSerial ? req.body.deviceSerial.toUpperCase() : null;
     const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 
-    if (!cpuSerial || !groupName) {
+    if (!deviceSerial || !groupName) {
         logToFile(req, 'CPU serial number or group name not provided for adoption.');
         return res.status(400).send('CPU serial number or group name not provided.');
     }
 
-    const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
+    const unknownClientFile = path.join(unknownClientsDir, deviceSerial);
     const groupDir = path.join(adoptedClientsDir, groupName);
-    const adoptedClientDir = path.join(groupDir, cpuSerial);
+    const adoptedClientDir = path.join(groupDir, deviceSerial);
 
     // Ensure the group directory exists
     if (!fs.existsSync(groupDir)) {
@@ -678,8 +678,8 @@ app.post('/adopt', checkAuth, (req, res) => {
         fs.mkdirSync(adoptedClientDir);
         // Move the serial number file to the adopted clients directory
         fs.renameSync(unknownClientFile, path.join(adoptedClientDir, 'serial_number.txt'));
-        logToFile(req, `Client ${cpuSerial} adopted to group ${groupName}.`);
-        res.send(`Client ${cpuSerial} has been adopted to group ${groupName}.
+        logToFile(req, `Client ${deviceSerial} adopted to group ${groupName}.`);
+        res.send(`Client ${deviceSerial} has been adopted to group ${groupName}.
                 <br><p>You will be redirected to the pending adoption page in 3 seconds...</p>
                 <script>
                     setTimeout(function() {
@@ -687,28 +687,28 @@ app.post('/adopt', checkAuth, (req, res) => {
                     }, 3000);
                 </script>`);
     } else {
-        logToFile(req, `Client ${cpuSerial} not found in pending adoption list.`);
+        logToFile(req, `Client ${deviceSerial} not found in pending adoption list.`);
         res.status(404).send('Client not found in unknown clients.');
     }
 });
 
 // Endpoint to delete a pending adoption entry
 app.post('/delete-pending', checkAuth, (req, res) => {
-    const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
+    const deviceSerial = req.body.deviceSerial ? req.body.deviceSerial.toUpperCase() : null;
 
-    if (!cpuSerial) {
+    if (!deviceSerial) {
         logToFile(req, 'CPU serial number not provided for deletion.');
         return res.status(400).send('CPU serial number not provided.');
     }
 
-    const unknownClientFile = path.join(unknownClientsDir, cpuSerial);
+    const unknownClientFile = path.join(unknownClientsDir, deviceSerial);
 
     if (fs.existsSync(unknownClientFile)) {
         fs.unlinkSync(unknownClientFile);
-        logToFile(req, `Pending adoption entry for ${cpuSerial} deleted.`);
-        res.send(`Pending adoption entry for ${cpuSerial} has been deleted.<br><a href="/pending-adoption">Back to Pending Adoption</a>`);
+        logToFile(req, `Pending adoption entry for ${deviceSerial} deleted.`);
+        res.send(`Pending adoption entry for ${deviceSerial} has been deleted.<br><a href="/pending-adoption">Back to Pending Adoption</a>`);
     } else {
-        logToFile(req, `Client ${cpuSerial} not found in pending adoption list for deletion.`);
+        logToFile(req, `Client ${deviceSerial} not found in pending adoption list for deletion.`);
         res.status(404).send('Client not found in pending adoption list.');
     }
 });
@@ -818,20 +818,20 @@ app.post('/batch-operation', checkAuth, (req, res) => {
 
 // Endpoint to delete an adopted client entry
 app.post('/delete-adopted', checkAuth, (req, res) => {
-    const cpuSerial = req.body.cpuSerial ? req.body.cpuSerial.toUpperCase() : null;
+    const deviceSerial = req.body.deviceSerial ? req.body.deviceSerial.toUpperCase() : null;
     const groupName = req.body.groupName ? req.body.groupName.trim() : null;
 
-    if (!cpuSerial || !groupName) {
+    if (!deviceSerial || !groupName) {
         logToFile(req, 'CPU serial number or group name not provided for deletion.');
         return res.status(400).send('CPU serial number or group name not provided.');
     }
 
-    const adoptedClientDir = path.join(adoptedClientsDir, groupName, cpuSerial);
+    const adoptedClientDir = path.join(adoptedClientsDir, groupName, deviceSerial);
 
     if (fs.existsSync(adoptedClientDir)) {
         fs.rmSync(adoptedClientDir, { recursive: true });
-        logToFile(req, `Adopted entry for ${cpuSerial} in group ${groupName} deleted.`);
-        res.send(`Adopted entry for ${cpuSerial} in group ${groupName} has been deleted.
+        logToFile(req, `Adopted entry for ${deviceSerial} in group ${groupName} deleted.`);
+        res.send(`Adopted entry for ${deviceSerial} in group ${groupName} has been deleted.
                 <br><p>You will be redirected to the adopted clients page in 3 seconds...</p>
                 <script>
                     setTimeout(function() {
@@ -839,7 +839,7 @@ app.post('/delete-adopted', checkAuth, (req, res) => {
                     }, 3000);
                 </script>`);
     } else {
-        logToFile(req, `Client ${cpuSerial} in group ${groupName} not found for deletion.`);
+        logToFile(req, `Client ${deviceSerial} in group ${groupName} not found for deletion.`);
         res.status(404).send('Client not found in adopted clients list.');
     }
 });
