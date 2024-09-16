@@ -334,17 +334,19 @@ app.get('/groups', checkAuth, (req, res) => {
             groups.forEach(group => {
                 const groupPath = path.join(adoptedClientsDir, group);
                 if (fs.lstatSync(groupPath).isDirectory()) {
-                    const clients = fs.readdirSync(groupPath);
+                    // Read only directories within the groupPath
+                    const clients = fs.readdirSync(groupPath).filter(client => 
+                        fs.lstatSync(path.join(groupPath, client)).isDirectory()
+                    );
                     const clientCount = clients.length;
 
-                    // Check if 'library.script' exists and read its content
+                    // Read the library.script content
                     const libraryScriptPath = path.join(groupPath, 'library.script');
                     let libraryScriptContent = fs.existsSync(libraryScriptPath) ? fs.readFileSync(libraryScriptPath, 'utf-8') : 'No Script Available';
 
                     // Determine button state
                     const isDisabled = clientCount > 0 ? 'disabled' : '';
                     const buttonStyle = clientCount > 0 ? 'background-color: #ddd; color: #888; cursor: not-allowed;' : 'background-color: #ff4d4d; color: white; cursor: pointer;';
-
                     // Add a card for each group
                     groupListHtml += `
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; width: 300px; background-color: #f9f9f9; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);">
@@ -461,17 +463,26 @@ app.post('/delete-group', checkAuth, (req, res) => {
     const groupDir = path.join(adoptedClientsDir, groupName);
 
     if (fs.existsSync(groupDir)) {
-        const clients = fs.readdirSync(groupDir);
+        // Filter to ensure we only count directories
+        const clients = fs.readdirSync(groupDir).filter(item =>
+            fs.lstatSync(path.join(groupDir, item)).isDirectory()
+        );
+
         if (clients.length === 0) {
-            fs.rmdirSync(groupDir);
-            logToFile(req, `Group ${groupName} deleted.`);
-            res.send(`Group ${groupName} has been deleted.
-                <br><p>You will be redirected to the manage groups page in 3 seconds...</p>
-                <script>
-                    setTimeout(function() {
-                        window.location.href = '/groups';
-                    }, 3000);
-                </script>`);
+            try {
+                fs.rmdirSync(groupDir, { recursive: true }); // Safely try to remove the directory recursively
+                logToFile(req, `Group ${groupName} deleted.`);
+                res.send(`Group ${groupName} has been deleted.
+                    <br><p>You will be redirected to the manage groups page in 3 seconds...</p>
+                    <script>
+                        setTimeout(function() {
+                            window.location.href = '/groups';
+                        }, 3000);
+                    </script>`);
+            } catch (err) {
+                logToFile(req, `Error deleting non-empty group ${groupName}: ${err.message}`);
+                res.status(500).send('Failed to delete group. Please ensure the group is empty before deleting.');
+            }
         } else {
             logToFile(req, `Attempt to delete non-empty group ${groupName}.`);
             res.status(400).send('Group is not empty and cannot be deleted.');
