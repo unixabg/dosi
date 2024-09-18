@@ -35,6 +35,13 @@ The following Node.js packages are required to run the project:
   # Create self signed cert
   openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -passout pass: -subj "/C=US/ST=State/L=Locality/O=Organization/CN=localhost"
   ```
+- **Credentials**: Set username and password:
+  ```bash
+  echo '{
+    "username": "admin",
+    "password": "password"
+  }' > credentials.json
+  ```
 - **Launch dosi**: You should be ready to launch dosi. Check the server.log for information:
   ```bash
   node dosi.js >> server.log 2>&1 &`
