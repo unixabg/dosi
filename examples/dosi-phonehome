@@ -1,0 +1,54 @@
+#!/bin/bash
+#set -x
+
+# Log function to prepend timestamps to log entries
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> ~/dosi.log
+}
+
+# Set server URL and endpoint
+SERVER_URL="https://cast-controller:8443/operator"
+
+# Directory to store executed script hash
+EXECUTED_SCRIPT_DIR=~/.dosi_executed
+mkdir -p "$EXECUTED_SCRIPT_DIR"
+
+# Get the device serial number (Requires sudo privileges)
+DEVICE_SERIAL=$(sudo dmidecode --string system-serial-number)
+
+# Ensure the serial number is not empty
+if [ -z "$DEVICE_SERIAL" ]; then
+    log_message "Error: Could not retrieve device serial number."
+    exit 1
+fi
+
+log_message "Device serial number: $DEVICE_SERIAL"
+
+# Make the HTTP request to the server using curl (ignore certificate verification with -k)
+response=$(curl -k -s "$SERVER_URL?deviceSerial=$DEVICE_SERIAL")
+
+# Handle the response from the server
+if [ "$response" == "REBOOT" ]; then
+    log_message "Reboot command received from server. Rebooting..."
+    sudo reboot
+elif [ "$response" != "" ]; then
+    # Check if the script was already executed
+    script_hash=$(echo "$response" | sha256sum | awk '{print $1}')
+    if [ -f "$EXECUTED_SCRIPT_DIR/$script_hash" ]; then
+        log_message "Script has already been executed. Skipping..."
+    else
+        log_message "New script received. Executing script..."
+        echo "$response" > /tmp/dosi_script.sh
+        chmod +x /tmp/dosi_script.sh
+
+        # Run the script
+        /tmp/dosi_script.sh
+
+        # Log the script execution
+        touch "$EXECUTED_SCRIPT_DIR/$script_hash"
+        log_message "Script executed and hash recorded."
+    fi
+else
+    log_message "No response or invalid response from server."
+fi
+
