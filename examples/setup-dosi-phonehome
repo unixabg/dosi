@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# URL to download dosi-phonehome script
+DOSI_PHONEHOME_URL="https://raw.githubusercontent.com/unixabg/dosi/refs/heads/main/examples/dosi-phonehome"
+
+# Ensure the script is run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: This script must be run as root."
+    exit 1
+fi
+
+# Accept a username as a parameter
+if [ -z "$1" ]; then
+    echo "Usage: $0 <username>"
+    exit 1
+fi
+USERNAME="$1"
+
+# Determine user's home directory
+USER_HOME_DIR="/home/$USERNAME"
+
+# Sanity check to verify the user has a home directory
+if [ ! -d "$USER_HOME_DIR" ]; then
+    echo "Error: User '$USERNAME' does not have a home directory at $USER_HOME_DIR."
+    exit 1
+fi
+
+# Download using curl or wget
+if command -v curl &> /dev/null; then
+    curl -o "$USER_HOME_DIR/dosi-phonehome" "$DOSI_PHONEHOME_URL"
+elif command -v wget &> /dev/null; then
+    wget -O "$USER_HOME_DIR/dosi-phonehome" "$DOSI_PHONEHOME_URL"
+else
+    echo "Error: Neither curl nor wget is installed. Please install one of them and try again."
+    exit 1
+fi
+
+# Make the script executable
+chmod +x "$USER_HOME_DIR/dosi-phonehome"
+
+# Create a cron job for the specified user to run the script every 5 minutes
+(crontab -u "$USERNAME" -l 2>/dev/null; echo "*/5 * * * * $USER_HOME_DIR/dosi-phonehome") | crontab -u "$USERNAME" -
+
+# Confirm setup
+echo "dosi-phonehome script installed in $USER_HOME_DIR and cron job created to run every 5 minutes."
+
