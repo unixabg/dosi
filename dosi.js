@@ -317,6 +317,24 @@ app.post('/edit-alias', checkAuth, (req, res) => {
     res.redirect('/'); // Redirect back to the main page after saving the alias
 });
 
+// Endpoint to get the sctip to edit
+app.get('/get-script', checkAuth, (req, res) => {
+    const groupName = req.query.group;
+
+    if (!groupName) {
+        return res.status(400).send('Group name not provided.');
+    }
+
+    const libraryScriptPath = path.join(adoptedClientsDir, groupName, 'library.script');
+
+    if (fs.existsSync(libraryScriptPath)) {
+        const content = fs.readFileSync(libraryScriptPath, 'utf-8');
+        res.send(content);
+    } else {
+        res.send('');
+    }
+});
+
 // Serve the groups management page
 app.get('/groups', checkAuth, (req, res) => {
     fs.readdir(adoptedClientsDir, (err, groups) => {
@@ -324,6 +342,7 @@ app.get('/groups', checkAuth, (req, res) => {
             logToFile(req, 'Error reading groups directory.');
             return res.status(500).send('Error reading groups directory.');
         }
+
         includeHeaderAndFooter((header, footer) => {
             // Start building the HTML with a container for the card layout
             let groupListHtml = `
@@ -352,21 +371,17 @@ app.get('/groups', checkAuth, (req, res) => {
                         <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; width: 300px; background-color: #f9f9f9; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);">
                             <h2 style="margin-top: 0;">${group}</h2>
                             <p><strong>Client Count:</strong> ${clientCount}</p>
-                            <div style="margin-bottom: 10px;">
-                                <strong>Library Script:</strong>
-                                <div id="script-view-${group}" style="white-space: pre-wrap; font-family: monospace; background-color: #f8f8f8; border: 1px solid #ccc; padding: 8px; margin-top: 5px; max-height: 100px; overflow-y: auto;">
-                                    <pre>${libraryScriptContent}</pre>
-                                </div>
+                            <p><strong>Preview:</strong></p>
+                            <div style="white-space: pre-wrap; font-family: monospace; background-color: #f8f8f8; border: 1px solid #ccc; padding: 8px; margin-top: 5px; max-height: 100px; overflow-y: auto;">
+                                <pre>${libraryScriptContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <button onclick="editScript('${group}', \`${libraryScriptContent.replace(/`/g, '\\`')}\`)" style="border: none; background: none; cursor: pointer;">
-                                    <span style="font-size: 16px; color: #007bff;">✏️ Edit</span>
-                                </button>
-                                <form action="/delete-group" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this group?');">
-                                    <input type="hidden" name="groupName" value="${group}">
-                                    <button type="submit" ${isDisabled} style="${buttonStyle} border: none; border-radius: 4px; padding: 5px 10px;">Delete</button>
-                                </form>
-                            </div>
+                            <button onclick="openEditor('${group}')" style="border: none; background: none; cursor: pointer;">
+                                <span style="font-size: 16px; color: #007bff;">✏️ Edit Script</span>
+                            </button>
+                            <form action="/delete-group" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this group?');">
+                                <input type="hidden" name="groupName" value="${group}">
+                                <button type="submit" ${isDisabled} style="${buttonStyle} border: none; border-radius: 4px; padding: 5px 10px;">Delete</button>
+                            </form>
                         </div>`;
                 }
             });
@@ -378,7 +393,6 @@ app.get('/groups', checkAuth, (req, res) => {
                     <input type="text" name="groupName" placeholder="Enter Group Name" required style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     <button type="submit" style="background-color: #28a745; color: white; border: none; border-radius: 4px; padding: 8px 12px; cursor: pointer;">Add Group</button>
                 </form>
-
                 <!-- Modal for Editing Library Script -->
                 <div id="editModal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center;">
                     <div style="background-color: white; border-radius: 8px; padding: 20px; width: 90%; position: relative;">
@@ -390,14 +404,18 @@ app.get('/groups', checkAuth, (req, res) => {
                         </div>
                     </div>
                 </div>
-
                 <script>
                     let currentGroup = '';
 
-                    function editScript(group, scriptContent) {
+                    function openEditor(group) {
                         currentGroup = group;
-                        document.getElementById('modalScriptContent').value = scriptContent;
-                        document.getElementById('editModal').style.display = 'flex';
+                        fetch('/get-script?group=' + encodeURIComponent(group))
+                            .then(response => response.text())
+                            .then(scriptContent => {
+                                document.getElementById('modalScriptContent').value = scriptContent;
+                                document.getElementById('editModal').style.display = 'flex';
+                            })
+                            .catch(err => alert('Failed to load script: ' + err.message));
                     }
 
                     function closeModal() {
@@ -414,10 +432,11 @@ app.get('/groups', checkAuth, (req, res) => {
                             closeModal(); // Close the modal after saving
                             alert('Script saved successfully.');
                             location.reload(); // Reload the page to show updated content
-                        }).catch(err => console.error(err));
+                        }).catch(err => alert('Failed to save script: ' + err.message));
                     }
                 </script>
                 ${footer}`;
+
             res.send(groupListHtml);
         });
         logToFile(req, 'Viewed groups management page.');
