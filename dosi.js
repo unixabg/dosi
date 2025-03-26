@@ -172,6 +172,20 @@ app.get('/', checkAuth, (req, res) => {
         clients.push(...groupClients);
     });
 
+    // Enhance each client with alias for sorting
+    clients.forEach(client => {
+        const clientDir = path.join(adoptedClientsDir, client.group, client.client);
+        const aliasFile = path.join(clientDir, 'alias.txt');
+        client.alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : '';
+    });
+
+    // Sort: clients without alias first, then by alias alphabetically
+    clients.sort((a, b) => {
+        if (!a.alias && b.alias) return -1;
+        if (a.alias && !b.alias) return 1;
+        return a.alias.localeCompare(b.alias);
+    });
+
     includeHeaderAndFooter((header, footer) => {
         // Build the client table HTML with alternating row colors
         let clientTableHtml = `
@@ -195,8 +209,7 @@ app.get('/', checkAuth, (req, res) => {
         clients.forEach((client, index) => {
             const rowColor = index % 2 === 0 ? '#f2f2f2' : '#ffffff'; // Alternate row colors
             const clientDir = path.join(adoptedClientsDir, client.group, client.client);
-            const aliasFile = path.join(clientDir, 'alias.txt');
-            let alias = fs.existsSync(aliasFile) ? fs.readFileSync(aliasFile, 'utf-8').trim() : '';
+            const alias = client.alias;
 
             // Check the 'phonehome' file status
             const phonehomeFile = path.join(clientDir, 'phonehome');
